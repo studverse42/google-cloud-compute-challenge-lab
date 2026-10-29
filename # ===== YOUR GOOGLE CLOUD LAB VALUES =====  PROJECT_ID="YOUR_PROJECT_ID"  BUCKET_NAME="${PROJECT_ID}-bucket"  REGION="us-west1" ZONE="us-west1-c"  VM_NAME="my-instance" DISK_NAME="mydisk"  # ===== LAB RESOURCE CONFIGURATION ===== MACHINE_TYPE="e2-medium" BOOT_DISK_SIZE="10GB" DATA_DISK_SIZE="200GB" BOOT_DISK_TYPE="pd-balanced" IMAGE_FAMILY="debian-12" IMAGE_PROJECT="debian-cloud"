@@ -1,0 +1,21 @@
+
+# ===== YOUR GOOGLE CLOUD LAB VALUES =====
+
+PROJECT_ID="YOUR_PROJECT_ID"
+
+BUCKET_NAME="${PROJECT_ID}-bucket"
+
+REGION="us-west1"
+ZONE="us-west1-c"
+
+VM_NAME="my-instance"
+DISK_NAME="mydisk"
+
+# ===== LAB RESOURCE CONFIGURATION =====
+MACHINE_TYPE="e2-medium"
+BOOT_DISK_SIZE="10GB"
+DATA_DISK_SIZE="200GB"
+BOOT_DISK_TYPE="pd-balanced"
+IMAGE_FAMILY="debian-12"
+IMAGE_PROJECT="debian-cloud"
+
