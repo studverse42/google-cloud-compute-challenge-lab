@@ -1,0 +1,96 @@
+
+set -e
+
+echo "=== Configuring Google Cloud ==="
+gcloud config set project "$PROJECT_ID"
+gcloud config set compute/region "$REGION"
+gcloud config set compute/zone "$ZONE"
+
+echo "=== Task 1: Create bucket ==="
+if ! gcloud storage buckets describe "gs://${BUCKET_NAME}" \
+  --project="$PROJECT_ID" >/dev/null 2>&1; then
+  gcloud storage buckets create "gs://${BUCKET_NAME}" \
+    --project="$PROJECT_ID" \
+    --location=US \
+    --uniform-bucket-level-access
+else
+  echo "Bucket already exists."
+fi
+
+echo "=== Task 2: Create persistent disk ==="
+if ! gcloud compute disks describe "$DISK_NAME" \
+  --project="$PROJECT_ID" --zone="$ZONE" >/dev/null 2>&1; then
+  gcloud compute disks create "$DISK_NAME" \
+    --project="$PROJECT_ID" \
+    --zone="$ZONE" \
+    --size="$DATA_DISK_SIZE" \
+    --type="$BOOT_DISK_TYPE"
+else
+  echo "Disk already exists; verify its configuration."
+fi
+
+echo "=== Create VM ==="
+if ! gcloud compute instances describe "$VM_NAME" \
+  --project="$PROJECT_ID" --zone="$ZONE" >/dev/null 2>&1; then
+  gcloud compute instances create "$VM_NAME" \
+    --project="$PROJECT_ID" \
+    --zone="$ZONE" \
+    --machine-type="$MACHINE_TYPE" \
+    --image-family="$IMAGE_FAMILY" \
+    --image-project="$IMAGE_PROJECT" \
+    --boot-disk-type="$BOOT_DISK_TYPE" \
+    --boot-disk-size="$BOOT_DISK_SIZE" \
+    --tags=http-server
+else
+  echo "VM already exists; verify its configuration."
+fi
+
+echo "=== Attach persistent disk ==="
+if ! gcloud compute instances describe "$VM_NAME" \
+  --project="$PROJECT_ID" --zone="$ZONE" \
+  --format="value(disks.source)" |
+  grep -q "/disks/${DISK_NAME}$"; then
+  gcloud compute instances attach-disk "$VM_NAME" \
+    --project="$PROJECT_ID" \
+    --disk="$DISK_NAME" \
+    --zone="$ZONE"
+else
+  echo "Disk already attached."
+fi
+
+echo "=== Configure HTTP firewall ==="
+FIREWALL_NAME="allow-http-${VM_NAME}"
+
+if ! gcloud compute firewall-rules describe "$FIREWALL_NAME" \
+  --project="$PROJECT_ID" >/dev/null 2>&1; then
+  gcloud compute firewall-rules create "$FIREWALL_NAME" \
+    --project="$PROJECT_ID" \
+    --network=default \
+    --direction=INGRESS \
+    --action=ALLOW \
+    --rules=tcp:80 \
+    --source-ranges=0.0.0.0/0 \
+    --target-tags=http-server
+else
+  echo "Firewall rule exists; verify its settings."
+fi
+
+echo "=== Install NGINX ==="
+gcloud compute ssh "$VM_NAME" \
+  --project="$PROJECT_ID" \
+  --zone="$ZONE" \
+  --command='sudo apt-get update && sudo apt-get install -y nginx && sudo systemctl enable --now nginx && systemctl is-active nginx'
+
+echo "=== Final result ==="
+gcloud compute instances describe "$VM_NAME" \
+  --project="$PROJECT_ID" \
+  --zone="$ZONE" \
+  --format="table(name,status,networkInterfaces[0].accessConfigs[0].natIP)"
+
+EXTERNAL_IP="$(gcloud compute instances describe "$VM_NAME" \
+  --project="$PROJECT_ID" \
+  --zone="$ZONE" \
+  --format="get(networkInterfaces[0].accessConfigs[0].natIP)")"
+
+echo "Website: http://${EXTERNAL_IP}/"
+echo "Setup completed. Return to the lab and check your progress."
